@@ -1,50 +1,68 @@
-# Welcome to your Expo app 👋
+# Cushion Service Inventory Management App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+## Overview
+A mobile application for managing inventory of a cushion service company specializing in sofa leather replacement, car leather replacement, and sofa cushion replacement.
 
-## Get started
+## Technology Stack
+- Frontend: React Native (Cross-platform mobile app)
+- Backend Database: PostgreSQL
+- Barcode Scanning: react-native-camera
+- Local Storage: AsyncStorage (for offline capabilities)
+- Build Tool: Expo CLI
 
-1. Install dependencies
+## Features
+### Core Features (Requested)
+1. Item Quantity Tracking
+2. Audit Timestamp Recording
+3. In/Out Transaction Records
+4. New Item Addition
+5. Barcode Scanning for Auditing
+6. Unique Identifier (UID) for Each Item
 
-   ```bash
-   npm install
-   ```
+### Additional Essential Features
+7. User Authentication
+8. Offline Sync Capability
+9. Low Stock Alerts
+10. Category Management (Sofa/Car/Replacement)
+11. Search Functionality
+12. Basic Reporting
+13. Data Export (CSV)
 
-2. Start the app
+## Database Design
+### Tables
+```sql
+-- Items Table
+CREATE TABLE items (
+    name VARCHAR(100) NOT NULL,
+    category VARCHAR(50),
+    quantity INTEGER DEFAULT 0,
+    barcode VARCHAR(50) PRIMARY KEY,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-   ```bash
-    npx expo start
-   ```
+-- Inventory Transactions
+CREATE TABLE transactions (
+    id SERIAL PRIMARY KEY,
+    item_uid VARCHAR(36) REFERENCES items(uid),
+    quantity_change INTEGER NOT NULL,
+    transaction_type VARCHAR(3), -- IN/OUT
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    user_id VARCHAR(36)
+);
 
-In the output, you'll find options to open the app in a
+-- Users
+CREATE TABLE users (
+    user_id VARCHAR(36) PRIMARY KEY,
+    username VARCHAR(50) UNIQUE,
+    password VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+-- Audit Logs
+CREATE TABLE audit_logs (
+    id SERIAL PRIMARY KEY,
+    item_uid VARCHAR(36) REFERENCES items(uid),
+    audited_quantity INTEGER,
+    audit_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    user_id VARCHAR(36)
+);

@@ -3,6 +3,9 @@
     "name": "cushion-inventory",
     "slug": "cushion-inventory",
     "version": "1.0.0",
+    "permissions": [
+      "camera"
+    ],
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "myapp",
@@ -15,7 +18,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.limtzeyou.cushioninventory"
     },
     "web": {
       "bundler": "metro",
