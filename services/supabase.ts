@@ -63,6 +63,8 @@ export async function getItemByBarcode(barcode: string): Promise<InventoryItem |
     .eq('barcode', barcode)
     .single();
   
+  console.log('getItemByBarcode', data);
+  
   if (error && error.code !== 'PGRST116') throw error;
   return data;
 }

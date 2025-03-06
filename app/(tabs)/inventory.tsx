@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { StyleSheet, FlatList, Pressable, View, TextInput, ActivityIndicator } from 'react-native';
-import { Link, Stack } from 'expo-router';
+import { Link, Stack, useFocusEffect } from 'expo-router';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -17,9 +17,11 @@ export default function InventoryScreen() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  useEffect(() => {
+  useFocusEffect(
+    useCallback(() => {
       loadInventory();
-  }, []);
+    }, [])
+  );
 
   const loadInventory = async () => {
     try {

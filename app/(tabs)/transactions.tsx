@@ -46,7 +46,7 @@ export default function TransactionsScreen() {
   const renderItem = ({ item }: { item: Transaction }) => (
     <ThemedView style={styles.transactionCard}>
       <View style={styles.transactionHeader}>
-        <ThemedText type="defaultSemiBold">{item.item_name}</ThemedText>
+        <ThemedText type="defaultSemiBold">{item.items?.name}</ThemedText>
         <View
           style={[
             styles.transactionType,
@@ -132,7 +132,7 @@ export default function TransactionsScreen() {
         <FlatList
           data={filteredTransactions}
           renderItem={renderItem}
-          keyExtractor={(item) => item.barcode}
+          keyExtractor={(item) => item.timestamp}
           contentContainerStyle={styles.listContainer}
           onRefresh={loadTransactions}
           refreshing={loading}

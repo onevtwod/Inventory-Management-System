@@ -1,21 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Pressable, Alert, Text, TextInput, Keyboard, KeyboardAvoidingView, Platform, TouchableWithoutFeedback } from 'react-native';
+import { StyleSheet, View, Pressable, Alert } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
-import { IconSymbol } from '@/components/ui/IconSymbol';
-import { getItemByBarcode, createTransaction, updateItemQuantity, fetchTransactions } from '@/services/supabase';
-import { InventoryItem, Transaction } from '@/types';
-
-const CSV_CONFIG = {
-  mimeType: 'text/csv',
-  dialogTitle: 'Export Transactions',
-  UTI: 'public.comma-separated-values-text'
-};
+import { getItemByBarcode, createTransaction, updateItemQuantity } from '@/services/supabase';
+import { InventoryItem } from '@/types';
+import { supabase } from '@/lib/supabase';
 
 export default function ScanScreen() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -40,6 +32,17 @@ export default function ScanScreen() {
     }
   }, [permission, requestPermission]);
 
+  // Auto-reset scanner after timeout
+  useEffect(() => {
+    if (scanned && !loading) {
+      const timer = setTimeout(() => {
+        resetScanner();
+      }, 5000); // Reset after 5 seconds if not loading
+      
+      return () => clearTimeout(timer);
+    }
+  }, [scanned, loading]);
+
   const resetScanner = () => {
     isProcessing.current = false;
     setScanned(false);
@@ -47,31 +50,58 @@ export default function ScanScreen() {
   };
 
   const handleBarCodeScanned = async ({ data }: { data: string }) => {
-    setScanned(true);
+    // Prevent multiple scans in quick succession
     const now = Date.now();
     if (now - lastScanTime.current < COOLDOWN_TIME) return;
     lastScanTime.current = now;
 
+    // Prevent processing multiple scans simultaneously
     if (isProcessing.current) return;
+    
+    // Set scanner state
+    setScanned(true);
     isProcessing.current = true;
+    setLoading(true);
+    
+    console.log("Barcode scan detected!");
     
     try {
-      setLoading(true);
-      const item = await getItemByBarcode(data);
+      // Clean the barcode data - trim whitespace and special characters
+      const cleanBarcode = data.trim();
       
-      if (item) {
-        setScannedItem(item);
+      // Log detailed barcode info for debugging
+      console.log('Raw barcode:', data);
+      console.log('Cleaned barcode:', cleanBarcode);
+      console.log('Barcode length:', data.length);
+      console.log('Barcode char codes:', [...data].map(c => c.charCodeAt(0)));
+      
+      // Try direct database query first
+      const { data: directData, error: directError } = await supabase
+        .from('items')
+        .select('*')
+        .eq('barcode', cleanBarcode)
+        .single();
+      
+      console.log('Direct database query result:', { directData, directError });
+      
+      // Then try through the service function
+      const item = await getItemByBarcode(cleanBarcode);
+      console.log('Service function result:', item);
+      
+      if (directData || item) {
+        const finalItem = directData || item;
+        setScannedItem(finalItem);
         
         // Navigate directly to item details
         resetTransactionState();
         router.push({
           pathname: '/inventory/[barcode]' as const,
-          params: { barcode: data }
+          params: { barcode: cleanBarcode }
         });
       } else {
         Alert.alert(
           "Item Not Found",
-          `No item found with barcode: ${data}`,
+          `No item found with barcode: ${cleanBarcode}`,
           [
             {
               text: "Add New Item",
@@ -79,7 +109,7 @@ export default function ScanScreen() {
                 resetTransactionState();
                 router.push({
                   pathname: '/inventory/add',
-                  params: { scannedBarcode: data }
+                  params: { scannedBarcode: cleanBarcode }
                 });
               }
             },
@@ -94,8 +124,10 @@ export default function ScanScreen() {
         );
       }
     } catch (error) {
+      console.error('Error during barcode scan:', error);
       Alert.alert("Error", "Failed to retrieve item information");
-      console.error(error);
+      // Auto-reset scanner after error
+      setTimeout(resetScanner, 2000);
     } finally {
       isProcessing.current = false;
       setLoading(false);
@@ -116,37 +148,6 @@ export default function ScanScreen() {
     }
     
     return true;
-  };
-  
-  const handleConfirmTransaction = async () => {
-    if (!transactionType || !scannedItem) return;
-  
-    if (!validateQuantity(transactionType)) return;
-  
-    try {
-      const quantity = parseInt(inputQuantity);
-      const newQuantity = transactionType === 'in' 
-        ? scannedItem.quantity + quantity
-        : scannedItem.quantity - quantity;
-  
-      await createTransaction(
-        scannedItem.barcode, 
-        transactionType === 'in' ? quantity : -quantity,
-        transactionType.toUpperCase() as 'IN' | 'OUT'
-      );
-      
-      await updateItemQuantity(scannedItem.barcode, newQuantity);
-      
-      Alert.alert(
-        "Transaction Recorded",
-        `${transactionType === 'in' ? 'Added' : 'Removed'} ${quantity} ${scannedItem.name}`,
-        [{ text: "OK", onPress: resetTransactionState }]
-      );
-    } catch (error) {
-      Alert.alert("Error", "Failed to record transaction");
-    } finally {
-      resetTransactionState();
-    }
   };
   
   const resetTransactionState = () => {
@@ -195,55 +196,6 @@ export default function ScanScreen() {
     }
   };
 
-  const generateCSV = (data: Transaction[]): string => {
-    const headers = "Date,Amount,Category,Description\n";
-    
-    return data.reduce((acc, t) => {
-      const desc = t.items?.name 
-        ? `"${t.items?.name.replace(/"/g, '""')}"`
-        : '""';
-        
-      return acc + [
-        t.timestamp,
-        t.quantity_change.toFixed(2),
-        t.transaction_type,
-        desc
-      ].join(',') + '\n';
-    }, headers);
-  };
-
-  const handleExportCSV = async () => {
-    try {
-      if (!FileSystem.cacheDirectory) {
-        throw new Error('Cache directory not available');
-      }
-      
-      const data = await fetchTransactions();
-      
-      if (!data?.length) {
-        Alert.alert('No Data', 'There are no transactions to export');
-        return;
-      }
-  
-      const csvString = generateCSV(data);
-      const fileName = `transactions_${new Date().toISOString().slice(0,10)}.csv`;
-      const fileUri = FileSystem.cacheDirectory + fileName;
-  
-      await FileSystem.writeAsStringAsync(fileUri, csvString, {
-        encoding: FileSystem.EncodingType.UTF8
-      });
-  
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(fileUri, CSV_CONFIG);
-      } else {
-        Alert.alert('Error', 'Sharing functionality is not available');
-      }
-    } catch (error) {
-      console.error('Error exporting data:', error);
-      Alert.alert('Error', 'Failed to export data');
-    }
-  };
-
   if (!permission) {
     return (
       <ThemedView style={styles.container}>
@@ -274,7 +226,6 @@ export default function ScanScreen() {
         <CameraView
           style={StyleSheet.absoluteFillObject}
           facing="back"
-          key={scanned ? "inactive" : "active"}
           onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
           barcodeScannerSettings={{
             barcodeTypes: [
@@ -293,17 +244,22 @@ export default function ScanScreen() {
           <View style={styles.scanFrame} />
           <ThemedText style={styles.scanText}>Align barcode within frame</ThemedText>
         </View>
-        
-        <View style={styles.quickActionsContainer}>
-          <Pressable
-            style={styles.quickActionButton}
-            onPress={handleExportCSV}
-          >
-            <IconSymbol name="square.and.arrow.up" size={24} color="#FFFFFF" />
-            <ThemedText style={styles.quickActionText}>Export CSV</ThemedText>
-          </Pressable>
-        </View>
       </View>
+      
+      {scanned && (
+        <Pressable 
+          style={styles.resetButton}
+          onPress={resetScanner}
+        >
+          <ThemedText style={styles.resetButtonText}>Scan Again</ThemedText>
+        </Pressable>
+      )}
+      
+      {loading && (
+        <View style={styles.loadingOverlay}>
+          <ThemedText style={styles.loadingText}>Processing...</ThemedText>
+        </View>
+      )}
     </ThemedView>
   );
 }
@@ -452,24 +408,36 @@ const styles = StyleSheet.create({
     color: '#E74C3C',
     marginBottom: 12,
     fontSize: 14,
-  },  
-  quickActionsContainer: {
+  },
+  resetButton: {
     position: 'absolute',
-    bottom: 40,
-    right: 20,
-    flexDirection: 'row',
-    gap: 12,
+    bottom: 30,
+    alignSelf: 'center',
+    backgroundColor: '#4A90E2',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
   },
-  quickActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(74, 144, 226, 0.9)',
-    padding: 12,
-    borderRadius: 24,
-    gap: 8,
-  },
-  quickActionText: {
+  resetButtonText: {
     color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  loadingText: {
+    color: '#FFFFFF',
+    fontSize: 18,
     fontWeight: 'bold',
   },
 });

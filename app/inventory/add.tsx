@@ -14,10 +14,11 @@ export default function AddItemScreen() {
   const params = useLocalSearchParams();
   const [name, setName] = useState('');
   const [barcode, setBarcode] = useState('');
-  const [category, setCategory] = useState('Sofa');
+  const [category, setCategory] = useState('Aeroplus');
   const [quantity, setQuantity] = useState('0');
   const [loading, setLoading] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
+  const isSubmitting = useRef(false);
 
   useEffect(() => {
     if (params?.scannedBarcode && typeof params.scannedBarcode === 'string') {
@@ -31,7 +32,7 @@ export default function AddItemScreen() {
     }
   }, [params.scannedBarcode, params.name]);
 
-  const categories = ['Sofa', 'Car', 'Replacement'];
+  const categories = ['Aeroplus', 'Superleather'];
 
   const handleAddItem = async () => {
     if (!name) {
@@ -39,7 +40,13 @@ export default function AddItemScreen() {
       return;
     }
 
+    if (loading || isSubmitting.current) {
+      return;
+    }
+
     setLoading(true);
+    isSubmitting.current = true;
+
     try {
       await addItem({
         name,
@@ -49,11 +56,18 @@ export default function AddItemScreen() {
       });
       
       Alert.alert('Success', 'Item added successfully', [
-        { text: 'OK', onPress: () => router.back() }
+        { 
+          text: 'OK', 
+          onPress: () => {
+            isSubmitting.current = false;
+            router.back();
+          }
+        }
       ]);
     } catch (error: unknown) { 
       const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
       Alert.alert('Error', errorMessage);
+      isSubmitting.current = false;
     } finally {
       setLoading(false);
     }
@@ -137,15 +151,21 @@ export default function AddItemScreen() {
             </Modal>
           </>
         ) : (
-            <View style={styles.pickerContainer}>
+            <View style={styles.androidPickerContainer}>
               <Picker
                 selectedValue={category}
                 onValueChange={setCategory}
-                mode="dialog"
-                style={styles.picker}
+                mode="dropdown"
+                style={styles.androidPicker}
+                dropdownIconColor="#4A90E2"
               >
                 {categories.map((cat) => (
-                  <Picker.Item label={cat} value={cat} key={cat} />
+                  <Picker.Item 
+                    label={cat} 
+                    value={cat} 
+                    key={cat}
+                    style={styles.androidPickerItem}
+                  />
                 ))}
               </Picker>
             </View>
@@ -322,5 +342,23 @@ const styles = StyleSheet.create({
   scanButtonText: {
     color: '#FFFFFF',
     fontWeight: 'bold',
+  },
+  androidPickerContainer: {
+    backgroundColor: '#F0F0F0',
+    borderRadius: 8,
+    height: 50,
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  androidPicker: {
+    backgroundColor: 'transparent',
+    height: 50,
+    width: '100%',
+    marginLeft: -8, // Adjust padding to align with other inputs
+    color: '#333',
+  },
+  androidPickerItem: {
+    fontSize: 16,
+    color: '#333',
   },
 });
