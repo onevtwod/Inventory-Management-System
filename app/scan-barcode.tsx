@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { StyleSheet, View, Button, Pressable } from 'react-native';
 import { CameraView, useCameraPermissions, CameraType } from 'expo-camera';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -9,6 +9,9 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 export default function ScanBarcodeScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
+  const params = useLocalSearchParams();
+  const itemName = params.name as string | undefined;
+  const returnToAdd = params.returnToAdd === 'true';
 
   // Handle barcode scan event
   const handleBarCodeScanned = ({ data }: { type: string; data: string }) => {
@@ -17,10 +20,10 @@ export default function ScanBarcodeScreen() {
 
     console.log('Scanned data:', data);
     
-    // Pass scanned data back to AddItemScreen
+    // Always navigate directly to item details page
     router.replace({
-      pathname: '/inventory/add',
-      params: { scannedBarcode: data }
+      pathname: '/inventory/[barcode]' as const,
+      params: { barcode: data }
     });
   };
 
@@ -62,11 +65,9 @@ export default function ScanBarcodeScreen() {
         }}
       >
         <View style={styles.overlay}>
-          <View style={styles.scanFrame} />
-          <ThemedText style={styles.instructions}>
-            Position the barcode within the frame
-          </ThemedText>
-        </View>
+            <View style={styles.scanFrame} />
+            <ThemedText style={styles.scanText}>Align barcode within frame</ThemedText>
+          </View>
       </CameraView>
       
       {scanned && (
@@ -78,7 +79,6 @@ export default function ScanBarcodeScreen() {
         </Pressable>
       )}
       
-      <Button title="Go Back" onPress={() => router.back()} />
     </ThemedView>
   );
 }
@@ -102,8 +102,10 @@ const styles = StyleSheet.create({
     width: 250,
     height: 250,
     borderWidth: 2,
-    borderColor: '#FFFFFF',
+    borderColor: '#4A90E2',
     borderRadius: 12,
+    backgroundColor: 'transparent',
+    marginBottom: 20,
   },
   instructions: {
     position: 'absolute',
@@ -122,5 +124,13 @@ const styles = StyleSheet.create({
   scanAgainText: {
     color: '#FFFFFF',
     fontWeight: 'bold',
+  },
+  scanText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: -1, height: 1 },
+    textShadowRadius: 10,
   },
 });

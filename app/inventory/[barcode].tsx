@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Pressable, Alert, ActivityIndicator, ScrollView } from 'react-native';
+import { StyleSheet, View, Pressable, Alert, ActivityIndicator, ScrollView, TextInput } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import Barcode from '../components/BarcodeWrapper';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { getTransactions, recordTransaction, updateItem } from '@/services/inventoryService';
+import { getTransactions, getTransactionsByBarcode, recordTransaction, updateItem, deleteItem } from '@/services/inventoryService';
 import { InventoryItem, Transaction } from '@/types';
-import { getItemByBarcode } from '@/services/supabase';
+import { getItemByBarcode, updateItemQuantity } from '@/services/supabase';
 
 export default function ItemDetailScreen() {
   const { barcode } = useLocalSearchParams();
@@ -17,10 +18,38 @@ export default function ItemDetailScreen() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [inputQuantity, setInputQuantity] = useState('');
+  const [showQuantityInput, setShowQuantityInput] = useState(false);
+  const [transactionType, setTransactionType] = useState<'IN' | 'OUT' | null>(null);
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     loadItemDetails();
   }, [barcode]);
+
+  // 在状态声明后添加
+  useEffect(() => {
+    if (transactionType) {
+      setShowQuantityInput(true);
+      setErrorMessage(''); // 重置错误信息
+    }
+  }, [transactionType]); // 监听 transactionType 变化
+
+  const validateQuantity = () => {
+    const quantity = parseInt(inputQuantity);
+    
+    if (!quantity || quantity <= 0) {
+      setErrorMessage('Quantity must be a positive number');
+      return false;
+    }
+    
+    if (transactionType === 'OUT' && item && item.quantity - quantity < 0) {
+      setErrorMessage(`Cannot remove more than ${item.quantity} items`);
+      return false;
+    }
+    
+    return true;
+  };
 
   const loadItemDetails = async () => {
     setLoading(true);
@@ -30,7 +59,7 @@ export default function ItemDetailScreen() {
       setItem(itemData);
       
       // Get recent transactions for this item
-      const transactionsData = await getTransactions();
+      const transactionsData = await getTransactionsByBarcode(barcode as string);
       setTransactions(transactionsData.filter(t => t.barcode === barcode).slice(0, 5));
     } catch (error) {
       Alert.alert('Error', 'Failed to load item details');
@@ -39,28 +68,46 @@ export default function ItemDetailScreen() {
     }
   };
 
-  const handleTransaction = async (type: 'IN' | 'OUT') => {
+  const handleTransaction = async () => {
+    if (!transactionType || !item) return;
+  
+    if (!validateQuantity()) return;
+  
     setActionLoading(true);
     try {
-      const quantityChange = type === 'IN' ? 1 : -1;
-
+      const quantityChange = transactionType === 'IN' 
+        ? parseInt(inputQuantity) 
+        : -parseInt(inputQuantity);
+  
       const transaction: Transaction = {
         timestamp: new Date().toISOString(),
         barcode: barcode as string,
-        item_name: item?.name ?? "N/A", 
         quantity_change: quantityChange,
-        transaction_type: type,
+        transaction_type: transactionType,
         items: null
       };
       
       await recordTransaction(transaction);
-
-      // Refresh data
-      await loadItemDetails();
-      Alert.alert('Success', 'Transaction recorded successfully');
+      await updateItemQuantity(item.barcode, item.quantity + quantityChange);
+      
+      Alert.alert(
+        "Transaction Recorded",
+        `${transactionType === 'IN' ? 'Added' : 'Removed'} ${inputQuantity} ${item.name}`,
+        [{ text: "OK", onPress: () => {
+          setInputQuantity('');
+          setShowQuantityInput(false);
+          setTransactionType(null);
+          loadItemDetails();
+        }}]
+      );
     } catch (error) {
-      Alert.alert('Error', 'Failed to record transaction');
+      console.error("Error recording transaction:", error);
+      Alert.alert("Error recording transaction", JSON.stringify(error));
     } finally {
+      setInputQuantity('');
+      setShowQuantityInput(false);
+      setTransactionType(null);
+      setErrorMessage('');
       setActionLoading(false);
     }
   };
@@ -88,45 +135,102 @@ export default function ItemDetailScreen() {
   return (
     <ScrollView>
       <ThemedView style={styles.container}>
-        <Stack.Screen options={{ title: item.name, headerShown: true }} />
+        <Stack.Screen options={{ title: 'Item Details', headerShown: true }} />
         
         <View style={styles.itemHeader}>
-          <View>
+          <View style={styles.itemInfo}>
             <ThemedText type="title">{item.name}</ThemedText>
             <ThemedText style={styles.categoryTag}>{item.category}</ThemedText>
-          </View>
-          <View style={styles.quantityContainer}>
-            <ThemedText style={styles.quantityLabel}>Quantity</ThemedText>
-            <ThemedText style={[styles.quantityValue, item.quantity < 10 && styles.lowStock]}>
-              {item.quantity}
-            </ThemedText>
+            
+            <View style={styles.quantityContainer}>
+              <ThemedText style={styles.quantityLabel}>Quantity</ThemedText>
+              <ThemedText style={[styles.quantityValue, item.quantity < 10 && styles.lowStock]}>
+                {item.quantity}
+              </ThemedText>
+            </View>
           </View>
         </View>
         
         <View style={styles.barcodeContainer}>
-          <IconSymbol name="barcode" size={18} color="#666" />
-          <ThemedText style={styles.barcodeText}>{item.barcode || 'No barcode'}</ThemedText>
+          <Barcode
+            value={item.barcode}
+            format="CODE128"
+            singleBarWidth={2}
+            height={100}
+            lineColor="#000000"
+            backgroundColor="#FFFFFF"
+            showText={true}
+            textStyle={styles.barcodeText}
+          />
         </View>
         
         <View style={styles.actionButtons}>
-          <Pressable 
-            style={[styles.actionButton, styles.inButton, actionLoading && styles.disabledButton]}
-            onPress={() => handleTransaction('IN')}
-            disabled={actionLoading}
-          >
-            <IconSymbol name="plus" size={18} color="#FFFFFF" />
-            <ThemedText style={styles.actionButtonText}>Add Stock</ThemedText>
-          </Pressable>
-          
-          <Pressable 
-            style={[styles.actionButton, styles.outButton, actionLoading && styles.disabledButton]}
-            onPress={() => handleTransaction('OUT')}
-            disabled={actionLoading}
-          >
-            <IconSymbol name="minus" size={18} color="#FFFFFF" />
-            <ThemedText style={styles.actionButtonText}>Remove Stock</ThemedText>
-          </Pressable>
-        </View>
+        {!showQuantityInput ? (
+          <>
+            <Pressable 
+              style={[styles.actionButton, styles.inButton]}
+              onPress={() => {
+                setTransactionType('IN');
+                setShowQuantityInput(true); // 显式触发输入框显示
+              }}
+            >
+              <IconSymbol name="plus" size={18} color="#FFFFFF" />
+              <ThemedText style={styles.actionButtonText}>Add Stock</ThemedText>
+            </Pressable>
+
+            <Pressable 
+              style={[styles.actionButton, styles.outButton]}
+              onPress={() => {
+                setTransactionType('OUT');
+                setShowQuantityInput(true); // 显式触发输入框显示
+              }}
+            >
+              <IconSymbol name="minus" size={18} color="#FFFFFF" />
+              <ThemedText style={styles.actionButtonText}>Remove Stock</ThemedText>
+            </Pressable>
+          </>
+        ) : (
+          <View style={styles.quantityInputContainer}>
+            <TextInput
+              style={styles.quantityInput}
+              keyboardType="number-pad"
+              placeholder="Enter quantity"
+              value={inputQuantity}
+              onChangeText={text => {
+                setInputQuantity(text.replace(/[^0-9]/g, ''));
+                setErrorMessage('');
+              }}
+              autoFocus
+            />
+            
+            {errorMessage && (
+              <ThemedText style={styles.errorText}>{errorMessage}</ThemedText>
+            )}
+
+            <View style={styles.confirmButtons}>
+              <Pressable
+                style={[styles.confirmButton, styles.confirmButtonSuccess]}
+                onPress={handleTransaction}
+              >
+                <ThemedText style={styles.confirmButtonText}>
+                  Confirm {transactionType}
+                </ThemedText>
+              </Pressable>
+              
+              <Pressable
+                style={[styles.confirmButton, styles.confirmButtonCancel]}
+                onPress={() => {
+                  setInputQuantity('');
+                  setShowQuantityInput(false);
+                  setTransactionType(null);
+                }}
+              >
+                <ThemedText style={styles.confirmButtonText}>Cancel</ThemedText>
+              </Pressable>
+            </View>
+          </View>
+        )}
+      </View>
         
         <ThemedText type="subtitle" style={styles.sectionTitle}>Recent Transactions</ThemedText>
         
@@ -178,7 +282,7 @@ export default function ItemDetailScreen() {
                     text: 'Delete', 
                     style: 'destructive',
                     onPress: async () => {
-                      // Implement delete logic
+                      await deleteItem(item.barcode);
                       router.back();
                     }
                   }
@@ -211,19 +315,29 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 16,
   },
+  itemInfo: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    width: '100%',
+  },
   categoryTag: {
     fontSize: 14,
     color: '#666',
     marginTop: 4,
+    marginBottom: 12,
   },
   quantityContainer: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    marginTop: 8,
+    marginBottom: 4,
   },
   quantityLabel: {
     fontSize: 14,
     color: '#666',
+    marginBottom: 4,
   },
   quantityValue: {
+    paddingTop: 4,
     fontSize: 28,
     fontWeight: 'bold',
   },
@@ -231,16 +345,32 @@ const styles = StyleSheet.create({
     color: '#E74C3C',
   },
   barcodeContainer: {
-    flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F0F0F0',
-    padding: 12,
+    justifyContent: 'center',
+    marginVertical: 24,
+    padding: 30,
+    backgroundColor: '#FFFFFF',
     borderRadius: 8,
-    marginBottom: 24,
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#EBEBEB',
+  },
+  barcode: {
+    marginBottom: 8,
+    alignSelf: 'center',
+    width: '100%',
   },
   barcodeText: {
-    marginLeft: 8,
     fontSize: 16,
+    marginTop: 8,
+    textAlign: 'center',
+    fontWeight: 'bold',
+    color: '#000000',
   },
   actionButtons: {
     flexDirection: 'row',
@@ -348,5 +478,41 @@ const styles = StyleSheet.create({
   backButtonText: {
     color: '#FFFFFF',
     fontWeight: 'bold',
+  },
+  quantityInput: {
+    height: 50,
+    borderWidth: 2,
+    borderColor: '#4A90E2',
+    borderRadius: 8,
+    fontSize: 16,
+    backgroundColor: '#FFFFFF',
+  },
+  confirmButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  confirmButton: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  confirmButtonSuccess: {
+    backgroundColor: '#27AE60',
+  },
+  confirmButtonCancel: {
+    backgroundColor: '#666',
+  },
+  confirmButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  errorText: {
+    color: '#E74C3C',
+    marginBottom: 12,
+    fontSize: 14,
+  },
+  quantityInputContainer: {
+    width: '100%',
   },
 }); 

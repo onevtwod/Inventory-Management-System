@@ -23,8 +23,13 @@ export default function AddItemScreen() {
     if (params?.scannedBarcode && typeof params.scannedBarcode === 'string') {
       const newBarcode = params.scannedBarcode.toString();
       setBarcode(newBarcode);
+      
+      // Preserve the name from params if available
+      if (params?.name && typeof params.name === 'string' && params.name.trim() !== '') {
+        setName(params.name);
+      }
     }
-  }, [params.scannedBarcode]);
+  }, [params.scannedBarcode, params.name]);
 
   const categories = ['Sofa', 'Car', 'Replacement'];
 
@@ -60,7 +65,7 @@ export default function AddItemScreen() {
         <Stack.Screen options={{ title: 'Add New Item', headerShown: true }} />
         
         <View style={styles.formGroup}>
-          <ThemedText style={styles.label}>Item Name *</ThemedText>
+          <ThemedText style={styles.label}>Item Name</ThemedText>
           <TextInput
             style={styles.input}
             placeholder="Enter item name"
@@ -78,8 +83,11 @@ export default function AddItemScreen() {
               value={barcode}
               onChangeText={setBarcode}
             />
-            <Pressable style={styles.scanButton} onPress={() => router.push('/scan-barcode')}>
-              <IconSymbol name="qrcode" size={20} color="#FFFFFF" />
+            <Pressable style={styles.scanButton} onPress={() => router.push({
+              pathname: '/(tabs)/scan',
+            })}>
+              <IconSymbol name="barcode.viewfinder" size={24} color="#FFFFFF" />
+              <ThemedText style={styles.scanButtonText}>Scan Barcode</ThemedText>
             </Pressable>
           </View>
         </View>
@@ -310,5 +318,9 @@ const styles = StyleSheet.create({
   doneButtonText: {
     color: '#4A90E2',
     fontWeight: '600',
+  },
+  scanButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
   },
 });

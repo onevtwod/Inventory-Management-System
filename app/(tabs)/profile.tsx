@@ -28,18 +28,19 @@ const validateTransaction = (t: Transaction): boolean => {
   return !!t.timestamp && Number.isFinite(t.quantity_change);
 };
 
-export default async function ProfileScreen() {
+export default function ProfileScreen() {
   const router = useRouter();
   const [isExporting, setIsExporting] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const generateCSV = (data: Transaction[]): string => {
     const safeData = data.filter(validateTransaction);
     
-    const headers = "Date,Amount,Category,Description\n";
+    const headers = "Date,Amount,Type,Name\n";
     
     return safeData.reduce((acc, t) => {
-      const desc = t.item_name 
-        ? `"${t.item_name.replace(/"/g, '""')}"`
+      const desc = t.items?.name 
+        ? `"${t.items?.name.replace(/"/g, '""')}"`
         : '""';
         
       return acc + [
@@ -53,6 +54,7 @@ export default async function ProfileScreen() {
   
 
   const handleExportCSV = async () => {
+    setLoading(true);
     try {
       if (!FileSystem.cacheDirectory) {
         throw new Error('Cache directory not available');
@@ -75,15 +77,14 @@ export default async function ProfileScreen() {
   
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(fileUri, CSV_CONFIG);
-        Alert.alert('Ready to Share', 'Please select a sharing method');
       } else {
         Alert.alert('Error', 'Sharing functionality is not available');
       }
     } catch (error) {
-      Alert.alert('Export Failed', error instanceof Error 
-        ? error.message 
-        : 'Unknown error occurred'
-      );
+      console.error('Error exporting data:', error);
+      Alert.alert('Error', 'Failed to export data');
+    } finally {
+      setLoading(false);
     }
   };  
 

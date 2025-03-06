@@ -13,8 +13,7 @@ export type Transaction = {
   quantity_change: number;
   transaction_type: 'IN' | 'OUT';
   timestamp: string;
-  items: { name: string } | null; 
-  item_name?: string;
+  items?: { name: string } | null;
 };
 
 export type AuditLog = {

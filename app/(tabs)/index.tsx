@@ -31,7 +31,8 @@ type AppRoute =
   | `/audit-history?${string}`
   | `/scan?${string}`
   | `/inventory/add?${string}`
-  | `/audit/new?${string}`;
+  | `/audit/new?${string}`
+  | `/inventory/[barcode]`;
 
 interface StatCardProps {
   icon: SFSymbolName;
@@ -42,7 +43,7 @@ interface StatCardProps {
 
 function StatCard({ icon, title, value, linkTo }: StatCardProps) {
   return (
-    <Link href={linkTo} asChild>
+    <Link href={linkTo as any} asChild>
       <ThemedView style={styles.card}>
         <IconSymbol size={32} name={icon} color="#4A90E2" />
         <View>
@@ -149,18 +150,6 @@ export default function DashboardScreen() {
             value={dashboardData.lowStock} 
             linkTo="/inventory?filter=low" 
           />
-          <StatCard 
-            icon="arrow.left.arrow.right" 
-            title="Recent Transactions" 
-            value={dashboardData.recentTransactions} 
-            linkTo="/transactions" 
-          />
-          <StatCard 
-            icon="checkmark.circle.fill" 
-            title="Last Audit" 
-            value={dashboardData.lastAudit} 
-            linkTo="/audit-history" 
-          />
         </ThemedView>
       )}
       
@@ -170,12 +159,6 @@ export default function DashboardScreen() {
           <ThemedView style={styles.actionButtonInner}>
             <IconSymbol size={24} name="plus" color="#FFFFFF" />
             <ThemedText style={styles.actionButtonText}>Add New Item</ThemedText>
-          </ThemedView>
-        </Link>
-        <Link href="/audit/new" style={styles.actionButton}>
-          <ThemedView style={styles.actionButtonInner}>
-            <IconSymbol size={24} name="list.clipboard.fill" color="#FFFFFF" />
-            <ThemedText style={styles.actionButtonText}>Start Audit</ThemedText>
           </ThemedView>
         </Link>
       </ThemedView>

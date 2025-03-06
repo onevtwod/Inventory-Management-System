@@ -2,12 +2,20 @@ import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, Pressable, Alert, Text, TextInput, Keyboard, KeyboardAvoidingView, Platform, TouchableWithoutFeedback } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { getItemByBarcode, createTransaction, updateItemQuantity } from '@/services/supabase';
-import { InventoryItem } from '@/types';
+import { getItemByBarcode, createTransaction, updateItemQuantity, fetchTransactions } from '@/services/supabase';
+import { InventoryItem, Transaction } from '@/types';
+
+const CSV_CONFIG = {
+  mimeType: 'text/csv',
+  dialogTitle: 'Export Transactions',
+  UTI: 'public.comma-separated-values-text'
+};
 
 export default function ScanScreen() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -39,6 +47,7 @@ export default function ScanScreen() {
   };
 
   const handleBarCodeScanned = async ({ data }: { data: string }) => {
+    setScanned(true);
     const now = Date.now();
     if (now - lastScanTime.current < COOLDOWN_TIME) return;
     lastScanTime.current = now;
@@ -52,26 +61,36 @@ export default function ScanScreen() {
       
       if (item) {
         setScannedItem(item);
+        
+        // Navigate directly to item details
+        resetTransactionState();
+        router.push({
+          pathname: '/inventory/[barcode]' as const,
+          params: { barcode: data }
+        });
       } else {
         Alert.alert(
           "Item Not Found",
           `No item found with barcode: ${data}`,
           [
-            { 
-              text: "Add New Item", 
+            {
+              text: "Add New Item",
               onPress: () => {
-                router.replace(`/inventory/add?barcode=${data}`);
-                resetScanner();
+                resetTransactionState();
+                router.push({
+                  pathname: '/inventory/add',
+                  params: { scannedBarcode: data }
+                });
               }
             },
             { 
-              text: "Scan Again", 
+              text: "OK", 
+              style: "cancel",
               onPress: () => {
                 resetScanner();
               }
             }
-          ],
-          { onDismiss: resetScanner } 
+          ]
         );
       }
     } catch (error) {
@@ -80,7 +99,6 @@ export default function ScanScreen() {
     } finally {
       isProcessing.current = false;
       setLoading(false);
-      setScanned(false); 
     }
   };
 
@@ -177,6 +195,55 @@ export default function ScanScreen() {
     }
   };
 
+  const generateCSV = (data: Transaction[]): string => {
+    const headers = "Date,Amount,Category,Description\n";
+    
+    return data.reduce((acc, t) => {
+      const desc = t.items?.name 
+        ? `"${t.items?.name.replace(/"/g, '""')}"`
+        : '""';
+        
+      return acc + [
+        t.timestamp,
+        t.quantity_change.toFixed(2),
+        t.transaction_type,
+        desc
+      ].join(',') + '\n';
+    }, headers);
+  };
+
+  const handleExportCSV = async () => {
+    try {
+      if (!FileSystem.cacheDirectory) {
+        throw new Error('Cache directory not available');
+      }
+      
+      const data = await fetchTransactions();
+      
+      if (!data?.length) {
+        Alert.alert('No Data', 'There are no transactions to export');
+        return;
+      }
+  
+      const csvString = generateCSV(data);
+      const fileName = `transactions_${new Date().toISOString().slice(0,10)}.csv`;
+      const fileUri = FileSystem.cacheDirectory + fileName;
+  
+      await FileSystem.writeAsStringAsync(fileUri, csvString, {
+        encoding: FileSystem.EncodingType.UTF8
+      });
+  
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri, CSV_CONFIG);
+      } else {
+        Alert.alert('Error', 'Sharing functionality is not available');
+      }
+    } catch (error) {
+      console.error('Error exporting data:', error);
+      Alert.alert('Error', 'Failed to export data');
+    }
+  };
+
   if (!permission) {
     return (
       <ThemedView style={styles.container}>
@@ -204,137 +271,38 @@ export default function ScanScreen() {
       <Stack.Screen options={{ title: 'Scan Barcode', headerShown: true }} />
       
       <View style={styles.scannerContainer}>
-        {!scanned && !scannedItem ? (
-          <CameraView
-            style={StyleSheet.absoluteFillObject}
-            facing="back"
-            key={scanned ? "inactive" : "active"}
-            onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-            barcodeScannerSettings={{
-              barcodeTypes: [
-                'qr',
-                'upc_a',
-                'upc_e',
-                'ean8',
-                'ean13',
-                'code39',
-                'code93',
-                'code128',
-              ],
-            }}
-          />
-        ) : loading ? (
-          <View style={styles.scanningView}>
-            <IconSymbol name="arrow.clockwise" size={50} color="#4A90E2" />
-            <ThemedText style={styles.scanningText}>Loading...</ThemedText>
-          </View>
-        ) : scannedItem ? (
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.flexContainer}
-            keyboardVerticalOffset={Platform.select({ ios: 100, android: 80 })}
-          >
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={styles.scannedItemContainer}>
-            <ThemedText type="title">Item Found</ThemedText>
-            <ThemedView style={styles.itemCard}>
-              <ThemedText type="defaultSemiBold">{scannedItem.name}</ThemedText>
-              <ThemedText>Barcode: {scannedItem.barcode}</ThemedText>
-              <ThemedText>Category: {scannedItem.category}</ThemedText>
-              <ThemedText>Current Quantity: {scannedItem.quantity}</ThemedText>
-            </ThemedView>
-            
-            <ThemedText type="subtitle" style={styles.actionTitle}>
-              Record Transaction
-            </ThemedText>
-            
-            {!showQuantityInput ? (
-            <View style={styles.actionButtonsContainer}>
-              <Pressable 
-                style={[styles.actionButton, styles.inButton]}
-                onPress={() => {
-                  setTransactionType('in');
-                  setShowQuantityInput(true);
-                }}
-              >
-                <IconSymbol name="arrow.down" size={24} color="#FFFFFF" />
-                <ThemedText style={styles.actionButtonText}>IN</ThemedText>
-              </Pressable>
-
-              <Pressable 
-                style={[styles.actionButton, styles.outButton]}
-                onPress={() => {
-                  setTransactionType('out');
-                  setShowQuantityInput(true);
-                }}
-              >
-                <IconSymbol name="arrow.up" size={24} color="#FFFFFF" />
-                <ThemedText style={styles.actionButtonText}>OUT</ThemedText>
-              </Pressable>
-            </View>
-          ) : (
-            <View style={styles.quantityContainer}>
-          <TextInput
-            style={styles.quantityInput}
-            keyboardType="number-pad"
-            returnKeyType="done"
-            onSubmitEditing={Keyboard.dismiss}
-            placeholder="Enter quantity"
-            value={inputQuantity}
-            onChangeText={text => {
-              setInputQuantity(text.replace(/[^0-9]/g, ''));
-              setErrorMessage('');
-            }}
-            autoFocus
-          />
-          
-          {errorMessage && (
-            <ThemedText style={styles.errorText}>{errorMessage}</ThemedText>
-          )}
-
-          <View style={styles.confirmButtons}>
-            <Pressable
-              style={[styles.confirmButton, styles.confirmButtonSuccess]}
-              onPress={handleConfirmTransaction}
-            >
-              <ThemedText style={styles.confirmButtonText}>
-                Confirm {transactionType?.toUpperCase()}
-              </ThemedText>
-            </Pressable>
-            
-            <Pressable
-              style={[styles.confirmButton, styles.confirmButtonCancel]}
-              onPress={() => {
-                resetTransactionState();
-                Keyboard.dismiss();
-              }}
-            >
-              <ThemedText style={styles.confirmButtonText}>Cancel</ThemedText>
-            </Pressable>
-          </View>
+        <CameraView
+          style={StyleSheet.absoluteFillObject}
+          facing="back"
+          key={scanned ? "inactive" : "active"}
+          onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+          barcodeScannerSettings={{
+            barcodeTypes: [
+              'qr',
+              'upc_a',
+              'upc_e',
+              'ean8',
+              'ean13',
+              'code39',
+              'code93',
+              'code128',
+            ],
+          }}
+        />
+        <View style={styles.overlay}>
+          <View style={styles.scanFrame} />
+          <ThemedText style={styles.scanText}>Align barcode within frame</ThemedText>
         </View>
-          )}
-            
-            <Pressable 
-              style={styles.cancelButton}
-              onPress={() => {
-                setScannedItem(null);
-                setScanned(false);
-              }}
-            >
-              <ThemedText style={styles.cancelButtonText}>Cancel</ThemedText>
-            </Pressable>
-          </View>
-          </TouchableWithoutFeedback>
-        </KeyboardAvoidingView>
-        ) : null}
         
-        {!scanned && !scannedItem && (
-          <View style={styles.overlay}>
-            <View style={styles.scanFrame} />
-            <ThemedText style={styles.scanText}>Align barcode within frame</ThemedText>
-          </View>
-        )}
+        <View style={styles.quickActionsContainer}>
+          <Pressable
+            style={styles.quickActionButton}
+            onPress={handleExportCSV}
+          >
+            <IconSymbol name="square.and.arrow.up" size={24} color="#FFFFFF" />
+            <ThemedText style={styles.quickActionText}>Export CSV</ThemedText>
+          </Pressable>
+        </View>
       </View>
     </ThemedView>
   );
@@ -485,4 +453,23 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     fontSize: 14,
   },  
+  quickActionsContainer: {
+    position: 'absolute',
+    bottom: 40,
+    right: 20,
+    flexDirection: 'row',
+    gap: 12,
+  },
+  quickActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(74, 144, 226, 0.9)',
+    padding: 12,
+    borderRadius: 24,
+    gap: 8,
+  },
+  quickActionText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
 });

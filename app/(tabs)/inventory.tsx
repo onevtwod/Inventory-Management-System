@@ -7,6 +7,7 @@ import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { fetchInventory } from '@/services/supabase';
 import { InventoryItem } from '@/types';
+import { useRouter } from 'expo-router';
 
 export default function InventoryScreen() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -14,9 +15,10 @@ export default function InventoryScreen() {
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
-    loadInventory();
+      loadInventory();
   }, []);
 
   const loadInventory = async () => {
