@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Pressable, Alert, ActivityIndicator, TextInput } from 'react-native';
+import { StyleSheet, View, Pressable, Alert, ActivityIndicator, TextInput, Modal, Platform } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Picker } from '@react-native-picker/picker';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -21,6 +22,9 @@ export default function EditItemScreen() {
   });
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
+
+  const categories = ['Aeroplus', 'Superleather'];
 
   useEffect(() => {
     loadItem();
@@ -109,12 +113,69 @@ export default function EditItemScreen() {
         {/* Category Field */}
         <View style={styles.inputGroup}>
           <ThemedText type='default'>Category</ThemedText>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter category"
-            value={formData.category}
-            onChangeText={text => setFormData(prev => ({ ...prev, category: text }))}
-          />
+          {Platform.OS === 'ios' ? (
+            <>
+              <Pressable 
+                style={styles.pickerPressable}
+                onPress={() => setShowPicker(true)}
+              >
+                <ThemedText style={[styles.pickerText, !formData.category && styles.placeholderText]}>
+                  {formData.category || 'Select Category'}
+                </ThemedText>
+              </Pressable>
+
+              <Modal
+                visible={showPicker}
+                transparent={true}
+                animationType="slide"
+                onRequestClose={() => setShowPicker(false)}
+              >
+                <View style={styles.modalContainer}>
+                  <View style={styles.pickerHeader}>
+                    <Pressable
+                      style={styles.doneButton}
+                      onPress={() => setShowPicker(false)}
+                    >
+                      <ThemedText style={styles.doneButtonText}>Done</ThemedText>
+                    </Pressable>
+                  </View>
+                  
+                  <View style={styles.pickerContainer}>
+                    <Picker
+                      selectedValue={formData.category}
+                      onValueChange={(value) => {
+                        setFormData(prev => ({ ...prev, category: value }));
+                      }}
+                      style={styles.picker}
+                    >
+                      {categories.map((cat) => (
+                        <Picker.Item label={cat} value={cat} key={cat} color={Platform.OS === 'ios' ? '#000' : undefined}/>
+                      ))}
+                    </Picker>
+                  </View>
+                </View>
+              </Modal>
+            </>
+          ) : (
+            <View style={styles.androidPickerContainer}>
+              <Picker
+                selectedValue={formData.category}
+                onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))}
+                mode="dropdown"
+                style={styles.androidPicker}
+                dropdownIconColor="#4A90E2"
+              >
+                {categories.map((cat) => (
+                  <Picker.Item 
+                    label={cat} 
+                    value={cat} 
+                    key={cat}
+                    style={styles.androidPickerItem}
+                  />
+                ))}
+              </Picker>
+            </View>
+          )}
         </View>
 
         {/* Barcode Field */}
@@ -122,10 +183,9 @@ export default function EditItemScreen() {
           <ThemedText type='default'>Barcode</ThemedText>
           <TextInput
             style={styles.input}
-            placeholder="Enter numeric barcode"
+            placeholder="Enter barcode"
             value={formData.barcode}
-            onChangeText={text => setFormData(prev => ({ ...prev, barcode: text.replace(/[^0-9]/g, '') }))}
-            keyboardType="number-pad"
+            onChangeText={text => setFormData(prev => ({ ...prev, barcode: text.replace(/[^a-zA-Z0-9]/g, '') }))}
           />
         </View>
 
@@ -192,5 +252,71 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 16,
     backgroundColor: '#FFF',
+  },
+  pickerPressable: {
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 8,
+    height: 50,
+    justifyContent: 'center',
+  },
+  picker: {
+    width: '100%',
+    backgroundColor: 'white',
+    color: '#333',
+  },
+  pickerText: {
+    padding: 12,
+    color: '#333',
+  },
+  placeholderText: {
+    color: '#888',
+  },
+  pickerContainer: {
+    backgroundColor: 'white',
+    height: 250,
+    width: '100%',
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  pickerHeader: {
+    backgroundColor: '#FFFFFF',
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  doneButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  doneButtonText: {
+    color: '#4A90E2',
+    fontWeight: '600',
+  },
+  androidPickerContainer: {
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 8,
+    height: 50,
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  androidPicker: {
+    backgroundColor: 'transparent',
+    height: 50,
+    width: '100%',
+    marginLeft: -8,
+    color: '#333',
+  },
+  androidPickerItem: {
+    fontSize: 16,
+    color: '#333',
   },
 });

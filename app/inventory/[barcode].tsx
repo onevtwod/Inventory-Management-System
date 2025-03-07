@@ -9,6 +9,7 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import { getTransactions, getTransactionsByBarcode, recordTransaction, updateItem, deleteItem } from '@/services/inventoryService';
 import { InventoryItem, Transaction } from '@/types';
 import { getItemByBarcode, updateItemQuantity } from '@/services/supabase';
+import dateUtils from '../utils/dateUtils';
 
 export default function ItemDetailScreen() {
   const { barcode } = useLocalSearchParams();
@@ -68,6 +69,21 @@ export default function ItemDetailScreen() {
     }
   };
 
+  const getMalaysiaDateTime = (): string => {
+    const options: Intl.DateTimeFormatOptions = {
+      timeZone: 'Asia/Kuala_Lumpur',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false // Use 24-hour format
+    };
+  
+    return new Date().toLocaleString('en-MY', options);
+  }
+
   const handleTransaction = async () => {
     if (!transactionType || !item) return;
   
@@ -80,7 +96,7 @@ export default function ItemDetailScreen() {
         : -parseInt(inputQuantity);
   
       const transaction: Transaction = {
-        timestamp: new Date().toISOString(),
+        timestamp: getMalaysiaDateTime(),
         barcode: barcode as string,
         quantity_change: quantityChange,
         transaction_type: transactionType,
@@ -253,7 +269,7 @@ export default function ItemDetailScreen() {
                 </ThemedText>
               </View>
               <ThemedText style={styles.transactionDate}>
-                {new Date(transaction.timestamp).toLocaleString()}
+                {dateUtils.formatMalaysiaTime(transaction.timestamp)}
               </ThemedText>
             </View>
           ))

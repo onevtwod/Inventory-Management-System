@@ -25,7 +25,9 @@
       },
       "package": "com.limtzeyou.limcushionims",
       "permissions": [
-        "CAMERA"
+        "CAMERA",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -43,6 +45,14 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "98dd8efa-b55b-4148-8f82-6f550d8c9727"
+      }
     }
   }
 }
