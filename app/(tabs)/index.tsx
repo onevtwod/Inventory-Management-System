@@ -95,8 +95,7 @@ export default function DashboardScreen() {
       const { count: lowStock } = await supabase
         .from('items')
         .select('*', { count: 'exact', head: true })
-        .lt('quantity', 10);
-      
+        .lt('quantity', 2);
       // Get recent transactions (last 7 days)
       const oneWeekAgo = new Date();
       oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
